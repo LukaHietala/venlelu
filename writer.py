@@ -1,47 +1,46 @@
-import sys, getopt
+import argparse
+import sys
+from pathlib import Path
 
 from devices import DeviceVerifyError, verify_device
 
-def check_image():
-    pass
+
+def check_image(path: str) -> str:
+    iso_path = Path(path)
+    if not iso_path.exists():
+        raise FileNotFoundError(f"iso not found: {iso_path}")
+    if not iso_path.is_file():
+        raise FileNotFoundError(f"not a regular file: {iso_path}")
+    return str(iso_path)
+
 
 def get_args(argv) -> tuple[str, str]:
-    image_file = None  # path to iso, e.g. debian.iso (TODO: always use this, DONT make it an option)
-    block_device = None   # path to disk, e.g. /dev/sda
-
-    try:
-        opts, _ = getopt.getopt(argv, "hi:o:", ["ifile=", "ofile="])
-    except getopt.GetoptError:
-        print("writer.py -i <path_to_iso> -o <path_to_disk>")
-        sys.exit(2)
-
-    for opt, arg in opts:
-        if opt == "-h":
-            print("writer.py -i <path_to_iso> -o <path_to_disk>")
-            sys.exit(0)
-        elif opt in ("-i", "--iso"):
-            image_file = arg
-        elif opt in ("-o", "--disk"):
-            block_device = arg
-
-    if not image_file or not block_device:
-        print("Error: both -i/--iso and -o/--disk are required")
-        print("writer.py -i <path_to_iso> -o <path_to_disk>")
-        sys.exit(2)
-
-    return image_file, block_device
+    parser = argparse.ArgumentParser(description="Raw write ISO image to block device")
+    parser.add_argument("-i", "--input", required=True, help="path to ISO image")
+    parser.add_argument(
+        "-o", "--output", required=True, help="target block device, e.g. /dev/sda"
+    )
+    args = parser.parse_args(argv)
+    return args.input, args.output
 
 
 def main():
     src, dst = get_args(sys.argv[1:])
-    root = ""
+    try:
+        src = check_image(src)
+    except FileNotFoundError as e:
+        print(e, file=sys.stderr)
+        sys.exit(2)
+
     try:
         root = verify_device(dst)
     except DeviceVerifyError as e:
         print(e, file=sys.stderr)
+        sys.exit(2)
 
     print(root)
-    pass
+    print(src)
+
 
 if __name__ == "__main__":
     main()

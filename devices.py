@@ -4,32 +4,54 @@ https://www.kernel.org/doc/Documentation/ABI/stable/sysfs-block
 """
 
 import os
+import re
 from pathlib import Path
+
 
 class DeviceVerifyError(Exception):
     pass
 
+
 def is_readonly(root_block_name: str) -> bool:
     # /sys/block/<disk>/ro, 0 - not read only, 1 read only
-    return (Path("/sys/class/block") / root_block_name / "ro").read_text().strip() == "1"
+    ro_path = Path("/sys/class/block") / root_block_name / "ro"
+    try:
+        return ro_path.read_text().strip() == "1"
+    except PermissionError as e:
+        raise DeviceVerifyError("permission denied reading sysfs; run as root?") from e
+    except FileNotFoundError as e:
+        raise DeviceVerifyError(f"missing sysfs attribute: {ro_path}") from e
+
 
 def is_block_name(name: str) -> bool:
     return (Path("/sys/class/block") / name).exists()
 
+
 def is_partition(name: str) -> bool:
     return (Path("/sys/class/block") / name / "partition").exists()
 
+
 def is_removable(name: str) -> bool:
     # /sys/block/<disk>/removable, 0 - non-removable, 1 - removable
-    return (Path("/sys/class/block") / name / "removable").read_text().strip() == "1"
+    removable_path = Path("/sys/class/block") / name / "removable"
+    try:
+        return removable_path.read_text().strip() == "1"
+    except PermissionError as e:
+        raise DeviceVerifyError("permission denied reading sysfs; run as root?") from e
+    except FileNotFoundError as e:
+        raise DeviceVerifyError(f"missing sysfs attribute: {removable_path}") from e
+
+
+def _suggest_root_name(name: str) -> str:
+    # nvme0n1p1 -> nvme0n1, sda1 -> sda
+    return re.sub(r"p?\d+$", "", name)
+
 
 def verify_device(block_device: str) -> str:
     """
     Checks if device is valid root block device
     Returns root name of the provided device
     """
-    # TODO: check sys/block/<device>/removable
-
     if not block_device.startswith("/dev/"):
         raise DeviceVerifyError(f"not a /dev path: {block_device}")
 
@@ -38,18 +60,19 @@ def verify_device(block_device: str) -> str:
         raise DeviceVerifyError(f"not a block device: {block_device}")
 
     if is_partition(name):
-        raise DeviceVerifyError("refusing to write to partition. give root block device!")
+        root_guess = _suggest_root_name(name)
+        hint = f" (did you mean /dev/{root_guess}?)" if root_guess else ""
+        raise DeviceVerifyError(f"refusing to write to partition {block_device}{hint}")
 
     if not is_removable(name):
-        confirm = input(f"/dev/{name} is not removable device (likely not a USB or external device). Want to risk it? (yes/no): ")
+        confirm = input(
+            f"/dev/{name} is not a removable device (likely internal). Want to risk it? (yes/no): "
+        )
         if confirm.lower() != "yes":
-            raise DeviceVerifyError("refusing to write to removable device")
+            raise DeviceVerifyError(
+                f"refusing to write to non-removable device (/dev/{name})"
+            )
 
-    try:
-        if is_readonly(name):
-            raise DeviceVerifyError(f"/dev/{name} is read-only (sysfs ro=1)")
-    except PermissionError as e:
-        raise DeviceVerifyError("permission denied reading sysfs; run as root?") from e
-    except OSError as e:
-        raise DeviceVerifyError(f"failed reading /sys/block/{name}/ro") from e
+    if is_readonly(name):
+        raise DeviceVerifyError(f"/dev/{name} is read-only (sysfs ro=1)")
     return name
