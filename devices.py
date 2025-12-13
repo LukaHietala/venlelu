@@ -11,7 +11,7 @@ class DeviceVerifyError(Exception):
 
 def is_readonly(root_block_name: str) -> bool:
     # /sys/block/<disk>/ro, 0 - not read only, 1 read only
-    return (Path("/sys/block") / root_block_name / "ro").read_text().strip() == "1"
+    return (Path("/sys/class/block") / root_block_name / "ro").read_text().strip() == "1"
 
 def is_block_name(name: str) -> bool:
     return (Path("/sys/class/block") / name).exists()
@@ -21,7 +21,7 @@ def is_partition(name: str) -> bool:
 
 def is_removable(name: str) -> bool:
     # /sys/block/<disk>/removable, 0 - non-removable, 1 - removable
-    return (Path("/sys/block") / name / "removable").read_text().strip() == "1"
+    return (Path("/sys/class/block") / name / "removable").read_text().strip() == "1"
 
 def verify_device(block_device: str) -> str:
     """
