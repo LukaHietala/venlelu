@@ -12,7 +12,7 @@ class DeviceVerifyError(Exception):
     pass
 
 
-def is_readonly(root_block_name: str) -> bool:
+def _is_readonly(root_block_name: str) -> bool:
     # /sys/block/<disk>/ro, 0 - not read only, 1 read only
     ro_path = Path("/sys/class/block") / root_block_name / "ro"
     try:
@@ -23,15 +23,15 @@ def is_readonly(root_block_name: str) -> bool:
         raise DeviceVerifyError(f"missing sysfs attribute: {ro_path}") from e
 
 
-def is_block_name(name: str) -> bool:
+def _is_block_name(name: str) -> bool:
     return (Path("/sys/class/block") / name).exists()
 
 
-def is_partition(name: str) -> bool:
+def _is_partition(name: str) -> bool:
     return (Path("/sys/class/block") / name / "partition").exists()
 
 
-def is_removable(name: str) -> bool:
+def _is_removable(name: str) -> bool:
     # /sys/block/<disk>/removable, 0 - non-removable, 1 - removable
     removable_path = Path("/sys/class/block") / name / "removable"
     try:
@@ -56,15 +56,15 @@ def verify_device(block_device: str) -> str:
         raise DeviceVerifyError(f"not a /dev path: {block_device}")
 
     name = os.path.basename(block_device)
-    if not is_block_name(name):
+    if not _is_block_name(name):
         raise DeviceVerifyError(f"not a block device: {block_device}")
 
-    if is_partition(name):
+    if _is_partition(name):
         root_guess = _suggest_root_name(name)
         hint = f" (did you mean /dev/{root_guess}?)" if root_guess else ""
         raise DeviceVerifyError(f"refusing to write to partition {block_device}{hint}")
 
-    if not is_removable(name):
+    if not _is_removable(name):
         confirm = input(
             f"/dev/{name} is not a removable device (likely internal). Want to risk it? (yes/no): "
         )
@@ -73,6 +73,6 @@ def verify_device(block_device: str) -> str:
                 f"refusing to write to non-removable device (/dev/{name})"
             )
 
-    if is_readonly(name):
+    if _is_readonly(name):
         raise DeviceVerifyError(f"/dev/{name} is read-only (sysfs ro=1)")
     return name
